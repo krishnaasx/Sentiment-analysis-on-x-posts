@@ -7,9 +7,10 @@ from nltk.stem.wordnet import WordNetLemmatizer
 import math
 import itertools
 import nltk
+from gensim.models import Word2Vec
 
 
-class sentimental_analysis:
+class Sentimental_analysis:
 
     def __init__(self):
         nltk.download("stopwords")
@@ -51,7 +52,7 @@ class sentimental_analysis:
     
     #Feature extration
     def feature_extraction(self, X):
-
+        
         # BagOfWords
         bow = {}
         sen_count = 1
@@ -105,20 +106,38 @@ class sentimental_analysis:
             TF_IDF[term] = tf_val * idf_val
         
         
+        self.word2vec_model = Word2Vec(sentences=TF_IDF, vector_size=100, window=5, min_count=1, workers=4)
         
+        #Sentence embeddings by averaging word vectors
+        sentence_embeddings = []
+        for sentence in TF_IDF:
+            word_vectors = [self.word2vec_model.wv[word] for word in sentence if word in self.word2vec_model.wv]
+            if word_vectors:
+                sentence_vector = np.mean(word_vectors, axis=0)
+            else:
+                sentence_vector = np.zeros(self.word2vec_model.vector_size)
+            sentence_embeddings.append(sentence_vector)
         
+        self.word2vec_embeddings = np.array(sentence_embeddings)
+
+        return TF_IDF, self.word2vec_embeddings
 
 if __name__ == "__main__":
 
-    # dataset = pd.read_csv("./training.200000.processed.noemoticon.csv")
-    dataset = pd.read_csv("./temp.csv")
+    dataset = pd.read_csv("./training.200000.processed.noemoticon.csv")
+    #dataset = pd.read_csv("./temp.csv")
 
     raw_X = dataset.iloc[:, :-1].values
     y = dataset.iloc[:, -1].values
 
-    sen = sentimental_analysis()
+    sen = Sentimental_analysis()
 
     preprocessed_data = sen.data_preprocessing(raw_X)
     extracted_features = sen.feature_extraction(preprocessed_data)
     
-    print(preprocessed_data)
+    tf_idf, word2vec_embeddings = sen.feature_extraction(preprocessed_data)
+    
+    
+    print("TF-IDF shape:", len(tf_idf))
+    print("Word2Vec embeddings shape:", word2vec_embeddings.shape)
+    
