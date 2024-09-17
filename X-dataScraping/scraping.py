@@ -6,7 +6,7 @@ from configparser import ConfigParser
 from random import uniform
 
 MINIMUM_TWEETS = 30
-QUERY = 'elonmusk'
+QUERY = 'himalayan_hunk'
 MAX_TWEETS_PER_REQUEST = 10
 MIN_DELAY = 5
 MAX_DELAY = 20
@@ -38,7 +38,7 @@ async def main():
         try:
             if tweets is None:
                 print(f'{datetime.now()} - Getting tweets....')
-                tweets = await client.search_tweet(QUERY, product='Top')
+                tweets = await client.search_tweet(QUERY, product='Media')
             else:
                 print(f'{datetime.now()} - Getting next tweets....')
                 tweets = await tweets.next()
