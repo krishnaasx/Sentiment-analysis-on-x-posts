@@ -1,143 +1,95 @@
-import pandas as pd
-from textblob import TextBlob
 import re
-import numpy as np
-from nltk.corpus import stopwords
-from nltk.stem.wordnet import WordNetLemmatizer
-import math
-import itertools
 import nltk
+import numpy as np
+import pandas as pd
+from sklearn.svm import SVC
+from nltk.corpus import stopwords
 from gensim.models import Word2Vec
+from nltk.tokenize import word_tokenize
+from nltk.stem.wordnet import WordNetLemmatizer
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics import accuracy_score, classification_report
 
 
 class Sentimental_analysis:
 
     def __init__(self):
         nltk.download("stopwords")
+        nltk.download("punkt")
         nltk.download("wordnet")
         nltk.download("omw-1.4")
         self.stops = set(stopwords.words("english"))
         self.lmtzr = WordNetLemmatizer()
-
-    #Data Preprocessing
+        self.tfidf_vectorizer = TfidfVectorizer(max_features=5000) 
+    
+    # Data Preprocessing
     def data_preprocessing(self, X):
+        
+        X = np.array([re.sub(r"@\w+|http\S+|www.\S+|[^a-zA-Z\s!?]", "", str(s)) for s in X])
 
-        # Removing noise
-        X = np.array([re.sub(r"@\w+", "", re.sub(r"http\S+|www.\S+", "", re.sub(r"[^a-z0-9A-Z\s]", "", str(s)))) for s in X])
-
-        # Tokenization
-        tokens = []
-        for x in X:
-            tokens.append(TextBlob(x).words)
-        tokenized_X = np.array(tokens, dtype=object)
-
-        # Lowercasing of tokenized data
-        lowercased_X = [[word.lower() for word in sentence] for sentence in tokenized_X]
-
-        # Removing stop words
+        tokenized_X = [word_tokenize(sentence.lower()) for sentence in X]
 
         non_stopwords_X = [
-            [word for word in sentence if word not in self.stops]
-            for sentence in lowercased_X
+            [word for word in sentence if word not in self.stops or word in ["not", "no"]]
+            for sentence in tokenized_X
         ]
 
-        # lemmetization
-        self.lmtzr = WordNetLemmatizer()
-        lemmetized_X = [
-            [self.lmtzr.lemmatize(word) for word in sentences]
-            for sentences in non_stopwords_X
-        ]
-
-        return np.array(lemmetized_X, dtype=object)
-    
-    #Feature extration
-    def feature_extraction(self, X):
+        lemmatized_X = [[self.lmtzr.lemmatize(word) for word in sentence] for sentence in non_stopwords_X]
         
-        # BagOfWords
-        bow = {}
-        sen_count = 1
-        for sentence in X:
-            sent = {}
-            for word in sentence:
-                if word not in sent.keys():
-                    sent[word] = 1
-                else:
-                    sent[word] += 1
-            bow[f"Post-{sen_count}"] = sent
-            sen_count += 1
-            
-        # TF
-        TF = {}
-        for insideDict in bow:
-            TOTAL_D = 0
-            for d in bow[insideDict].values():
-                TOTAL_D += d
+        processed_sentences = [' '.join(sentence) for sentence in lemmatized_X]
 
-            temp = {}
-            for key, value in zip(bow[insideDict].keys(), bow[insideDict].values()):
-                temp[key] = value / TOTAL_D
+        return np.array(lemmatized_X, dtype=object), processed_sentences
 
-            TF[insideDict] = temp
-
-        TF = dict(
-            itertools.chain.from_iterable(
-                [[(key, value)for key, value in zip(TF[post].keys(), TF[post].values())]for post in TF]
-            )
-        )
-
-        #IDF
-        IDF = {}
-        document_len = len(bow)
-        stringContaniningDoc = {}
-        for post in bow:
-            for keys, values in zip(bow[post].keys(), bow[post].values()):
-                if keys not in stringContaniningDoc:
-                    stringContaniningDoc[keys] = values
-                elif keys in stringContaniningDoc:
-                    stringContaniningDoc[keys] += values
-
-        for term, value in stringContaniningDoc.items():
-            IDF[term] = math.log(document_len / value)
-            
-
-        #Calculating TF-IDF
-        TF_IDF = {}
-        for term,tf_val, idf_val in zip (TF.keys(), TF.values(), IDF.values()):
-            TF_IDF[term] = tf_val * idf_val
+    # Feature Extraction
+    def feature_extraction(self, X, processed_sentences):
         
-        
-        self.word2vec_model = Word2Vec(sentences=TF_IDF, vector_size=100, window=5, min_count=1, workers=4)
-        
-        #Sentence embeddings by averaging word vectors
+        tfidf_matrix = self.tfidf_vectorizer.fit_transform(processed_sentences)
+
+        self.word2vec_model = Word2Vec(sentences=X, vector_size=300, window=5, min_count=1, workers=4)
+
         sentence_embeddings = []
-        for sentence in TF_IDF:
+        for sentence in X:
             word_vectors = [self.word2vec_model.wv[word] for word in sentence if word in self.word2vec_model.wv]
             if word_vectors:
                 sentence_vector = np.mean(word_vectors, axis=0)
             else:
                 sentence_vector = np.zeros(self.word2vec_model.vector_size)
             sentence_embeddings.append(sentence_vector)
-        
-        self.word2vec_embeddings = np.array(sentence_embeddings)
 
-        return TF_IDF, self.word2vec_embeddings
+        word2vec_embeddings = np.array(sentence_embeddings)
+
+        return tfidf_matrix, word2vec_embeddings
+
+    # Tranining and evaluation 
+    def train_and_evaluate_model(self, X, y):
+        
+        lemmatized_X, processed_sentences = self.data_preprocessing(X)
+        
+        tfidf_matrix, word2vec_embeddings = self.feature_extraction(lemmatized_X, processed_sentences)
+        
+        #combined_features = np.hstack(tfidf_matrix.toarray(), word2vec_embeddings)
+        
+        X_train, X_test, y_train, y_test = train_test_split(tfidf_matrix, y, test_size=0.20, random_state=42)
+        
+        svm_model = SVC(kernel='rbf', C=1, gamma='scale', random_state=42)
+        svm_model.fit(X_train, y_train)
+        
+        y_pred = svm_model.predict(X_test)
+        
+        accuracy = accuracy_score(y_test, y_pred)
+        
+        report = classification_report(y_test, y_pred)
+        
+        print(f"Accuracy: {accuracy:.4f}")
+        print("\nClassification Report:\n", report)
 
 if __name__ == "__main__":
-
-    dataset = pd.read_csv("./training.200000.processed.noemoticon.csv")
-    #dataset = pd.read_csv("./temp.csv")
-
-    raw_X = dataset.iloc[:, :-1].values
-    y = dataset.iloc[:, -1].values
-
-    sen = Sentimental_analysis()
-
-    preprocessed_data = sen.data_preprocessing(raw_X)
-    extracted_features = sen.feature_extraction(preprocessed_data)
     
-    tf_idf, word2vec_embeddings = sen.feature_extraction(preprocessed_data)
+    dataset = pd.read_csv("./temp.csv", encoding="ISO-8859-1")
+    raw_X = dataset["Text"].values  
+    y = dataset["Target"].values  
     
-    
-    print("TF-IDF shape:", len(tf_idf))
-    print("Word2Vec embeddings shape:", word2vec_embeddings.shape)
-    
+    sentiment_analyzer = Sentimental_analysis()
+
+    sentiment_analyzer.train_and_evaluate_model(raw_X, y)

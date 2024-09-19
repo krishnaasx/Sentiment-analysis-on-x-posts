@@ -6,7 +6,7 @@ from configparser import ConfigParser
 from random import uniform
 
 MINIMUM_TWEETS = 30
-QUERY = 'himalayan_hunk'
+QUERY = 'israel'
 MAX_TWEETS_PER_REQUEST = 10
 MIN_DELAY = 5
 MAX_DELAY = 20
