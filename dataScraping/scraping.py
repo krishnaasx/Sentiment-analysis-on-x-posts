@@ -1,21 +1,17 @@
 import asyncio
 from twikit import Client, TooManyRequests
 from datetime import datetime
-import csv
-from configparser import ConfigParser
 from random import uniform
 
-MINIMUM_TWEETS = 30
+MINIMUM_TWEETS = 5
 QUERY = 'israel'
 MAX_TWEETS_PER_REQUEST = 10
 MIN_DELAY = 5
 MAX_DELAY = 20
 
-config = ConfigParser()
-config.read('config.ini')
-username = config['X']['username']
-password = config['X']['password']
-email = config['X']['email']
+username = 'princenegitemp2'
+password = '5013634k'
+email = 'clasherkrishna21@gmail.com'
 
 async def human_like_delay():
     delay = uniform(MIN_DELAY, MAX_DELAY)
@@ -29,11 +25,8 @@ async def main():
     client.load_cookies('cookies.json')
     tweet_count = 0
     tweets = None
-
-    with open('tweets.csv', 'w', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Tweet_count', 'Username', 'Text', 'Created At', 'Retweets', 'Likes', 'Tweet ID'])
-
+    alltweets:str = []
+        
     while tweet_count < MINIMUM_TWEETS:
         try:
             if tweets is None:
@@ -56,11 +49,9 @@ async def main():
 
                 tweet_count += 1
                 batch_count += 1
-                tweet_data = [tweet_count, tweet.user.name, tweet.text, tweet.created_at, tweet.retweet_count, tweet.favorite_count, tweet.id]
+                tweet_data = tweet.text
 
-                with open('tweets.csv', 'a', newline='', encoding='utf-8') as file:
-                    writer = csv.writer(file)
-                    writer.writerow(tweet_data)
+                alltweets.append(tweet_data)
 
                 await asyncio.sleep(uniform(0.5, 2))
 
@@ -78,5 +69,9 @@ async def main():
 
     print(f'{datetime.now()} - Done! Got {tweet_count} tweets in total')
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    return alltweets
+
+
+
+asyncio.run(main())
+

@@ -1,2 +1,34 @@
+# Ignore configuration files that may contain sensitive information
+config.ini
+
+# Ignore cookie files which may contain session data
+cookies.json
+
+# Ignore CSV files which may contain scraped data
+*.csv
 *.csv
 main_temp.py
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore virtual environment folders if you're using one
+venv/
+env/
+.env/
+
+# Ignore OS generated files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ignore log files if your script generates any
+*.log

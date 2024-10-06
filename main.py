@@ -1,5 +1,4 @@
 import re
-import nltk
 import numpy as np
 import pandas as pd
 from sklearn.svm import SVC
@@ -15,13 +14,14 @@ from sklearn.metrics import accuracy_score, classification_report
 class Sentimental_analysis:
 
     def __init__(self):
-        nltk.download("stopwords")
-        nltk.download("punkt")
-        nltk.download("wordnet")
-        nltk.download("omw-1.4")
+        # nltk.download("stopwords")
+        # nltk.download("punkt")
+        # nltk.download("wordnet")
+        # nltk.download("omw-1.4")
         self.stops = set(stopwords.words("english"))
         self.lmtzr = WordNetLemmatizer()
         self.tfidf_vectorizer = TfidfVectorizer(max_features=5000) 
+        self.model = None
     
     # Data Preprocessing
     def data_preprocessing(self, X):
@@ -39,7 +39,7 @@ class Sentimental_analysis:
         
         processed_sentences = [' '.join(sentence) for sentence in lemmatized_X]
 
-        return np.array(lemmatized_X, dtype=object), processed_sentences
+        return processed_sentences
 
     # Feature Extraction
     def feature_extraction(self, X, processed_sentences):
@@ -60,36 +60,53 @@ class Sentimental_analysis:
         word2vec_embeddings = np.array(sentence_embeddings)
 
         return tfidf_matrix, word2vec_embeddings
-
-    # Tranining and evaluation 
-    def train_and_evaluate_model(self, X, y):
+    
+    
+    def predict_sentiment(self, sentence):
         
-        lemmatized_X, processed_sentences = self.data_preprocessing(X)
+        processed_sentence = self.data_preprocessing(np.array([sentence]))
         
-        tfidf_matrix, word2vec_embeddings = self.feature_extraction(lemmatized_X, processed_sentences)
+        tfidf_features = self.tfidf_vectorizer.transform(processed_sentence)
         
-        #combined_features = np.hstack(tfidf_matrix.toarray(), word2vec_embeddings)
+        prediction = self.model.predict(tfidf_features)
         
-        X_train, X_test, y_train, y_test = train_test_split(tfidf_matrix, y, test_size=0.20, random_state=42)
+        return prediction[0]
+    
         
-        svm_model = SVC(kernel='rbf', C=1, gamma='scale', random_state=42)
-        svm_model.fit(X_train, y_train)
-        
-        y_pred = svm_model.predict(X_test)
-        
-        accuracy = accuracy_score(y_test, y_pred)
-        
-        report = classification_report(y_test, y_pred)
-        
-        print(f"Accuracy: {accuracy:.4f}")
-        print("\nClassification Report:\n", report)
-
 if __name__ == "__main__":
     
     dataset = pd.read_csv("./temp.csv", encoding="ISO-8859-1")
     raw_X = dataset["Text"].values  
-    y = dataset["Target"].values  
+    y = dataset["Target"].values
     
     sentiment_analyzer = Sentimental_analysis()
-
-    sentiment_analyzer.train_and_evaluate_model(raw_X, y)
+    
+    lemmatized_X, processed_sentences = sentiment_analyzer.data_preprocessing(raw_X)
+    
+    tfidf_matrix, word2vec_embeddings = sentiment_analyzer.feature_extraction(lemmatized_X, processed_sentences)
+    
+    X_train, X_test, y_train, y_test = train_test_split(tfidf_matrix, y, test_size=0.20, random_state=42)
+    
+    svm_model = SVC(kernel='rbf', C=1, gamma='scale', random_state=42)
+    svm_model.fit(X_train, y_train)
+    
+    sentiment_analyzer.model = svm_model
+    
+    y_pred = svm_model.predict(X_test)
+        
+    accuracy = accuracy_score(y_test, y_pred)
+        
+    report = classification_report(y_test, y_pred)
+        
+    print(f"Accuracy: {accuracy:.4f}")
+    print("\nClassification Report:\n", report)
+    
+    while True:
+        user_input = input("\nEnter a sentence to predict sentiment (or 'quit' to exit): ")
+        if user_input.lower() == 'quit':
+            break
+        predicted_sentiment = sentiment_analyzer.predict_sentiment(user_input)
+        print(f"Predicted sentiment: {predicted_sentiment}")
+    
+    
+    
