@@ -3,7 +3,7 @@ from twikit import Client, TooManyRequests
 from datetime import datetime
 from random import uniform
 
-MINIMUM_TWEETS = 5
+MINIMUM_TWEETS = 10
 QUERY = 'israel'
 MAX_TWEETS_PER_REQUEST = 10
 MIN_DELAY = 5
@@ -70,8 +70,6 @@ async def main():
     print(f'{datetime.now()} - Done! Got {tweet_count} tweets in total')
 
     return alltweets
-
-
 
 asyncio.run(main())
 
