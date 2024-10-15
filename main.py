@@ -1,7 +1,9 @@
 import re
 import numpy as np
 import pandas as pd
+import nltk
 from nltk.corpus import stopwords
+from sklearn.calibration import LabelEncoder
 from gensim.models import Word2Vec
 from nltk.tokenize import word_tokenize
 from nltk.stem.wordnet import WordNetLemmatizer
@@ -14,11 +16,15 @@ from imblearn.over_sampling import SMOTE
 
 class ImprovedSentimentalAnalysis:
     def __init__(self):
+        nltk.download('punkt')
+        nltk.download('stopwords')
+        nltk.download('wordnet')
         self.stops = set(stopwords.words("english"))
         self.lmtzr = WordNetLemmatizer()
         self.tfidf_vectorizer = TfidfVectorizer(max_features=5000, ngram_range=(1, 3))
         self.model = None
         self.scaler = StandardScaler()
+        self.label_encoder = LabelEncoder()
     
     def clean_text(self, text):
         text = re.sub(r"@\w+|http\S+|www.\S+", "", text)
@@ -63,12 +69,19 @@ class ImprovedSentimentalAnalysis:
         prediction = self.model.predict(scaled_features)
         return prediction[0]
 
+    def preprocess_target(self, y):
+        # Encode target labels to 0 and 1
+        return self.label_encoder.fit_transform(y)
+
 if __name__ == "__main__":
-    dataset = pd.read_csv("./temp.csv", encoding="ISO-8859-1")
+    dataset = pd.read_csv("./temp2.csv", encoding="ISO-8859-1")
     raw_X = dataset["Text"].values  
     y = dataset["Target"].values
     
     sentiment_analyzer = ImprovedSentimentalAnalysis()
+    
+    # Preprocess target variable
+    y = sentiment_analyzer.preprocess_target(y)
     
     lemmatized_X, processed_sentences = sentiment_analyzer.data_preprocessing(raw_X)
     X = sentiment_analyzer.feature_extraction(lemmatized_X, processed_sentences)
@@ -107,4 +120,6 @@ if __name__ == "__main__":
         if user_input.lower() == 'quit':
             break
         predicted_sentiment = sentiment_analyzer.predict_sentiment(user_input)
-        print(f"Predicted sentiment: {predicted_sentiment}")
+        # Convert back to original label
+        original_label = sentiment_analyzer.label_encoder.inverse_transform([predicted_sentiment])[0]
+        print(f"Predicted sentiment: {original_label}")
