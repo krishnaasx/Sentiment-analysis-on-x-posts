@@ -8,6 +8,7 @@ cookies.json
 *.csv
 *.csv
 main_temp.py
+temp.csv
 
 # Ignore Python cache files
 __pycache__/

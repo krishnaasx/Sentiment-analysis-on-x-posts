@@ -1,94 +1,140 @@
 import re
 import nltk
-import numpy as np
 import pandas as pd
-from sklearn.svm import SVC
+from sklearn.svm import LinearSVC
 from nltk.corpus import stopwords
-from gensim.models import Word2Vec
 from nltk.tokenize import word_tokenize
 from nltk.stem.wordnet import WordNetLemmatizer
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import accuracy_score, classification_report
+from joblib import parallel_backend
+from sklearn.calibration import CalibratedClassifierCV
+import multiprocessing
 
-
-class Sentimental_analysis:
-
-    def __init__(self):
-        # nltk.download("stopwords")
-        # nltk.download("punkt")
-        # nltk.download("wordnet")
-        # nltk.download("omw-1.4")
-        self.stops = set(stopwords.words("english"))
+class SentimentAnalyzer:
+    def __init__(self, max_features=10000, n_jobs=-1):
+        # Download NLTK resources only if needed
+        try:
+            nltk.data.find('tokenizers/punkt')
+        except LookupError:
+            nltk.download("stopwords")
+            nltk.download("punkt")
+            nltk.download("wordnet")
+            nltk.download("omw-1.4")
+        
+        self.stops = set(stopwords.words("english")) - {'not', 'no', 'won\'t', 'shouldn\'t', 'couldn\'t', 'wouldn\'t', 'hasn\'t', 'haven\'t', 'hadn\'t', 'doesn\'t', 'don\'t', 'didn\'t'}
         self.lmtzr = WordNetLemmatizer()
-        self.tfidf_vectorizer = TfidfVectorizer(max_features=5000) 
-    
-    # Data Preprocessing
-    def data_preprocessing(self, X):
+        self.max_features = max_features
+        self.n_jobs = n_jobs
         
-        X = np.array([re.sub(r"@\w+|http\S+|www.\S+|[^a-zA-Z\s!?]", "", str(s)) for s in X])
+        # Improved regex pattern for text cleaning
+        self.cleanup_pattern = re.compile(r'@\w+|https?://\S+|www\.\S+|[^a-zA-Z\s!?]')
+        
+        # Initialize pipeline components
+        self.tfidf_vectorizer = TfidfVectorizer(
+            max_features=self.max_features,
+            ngram_range=(1, 3),
+            min_df=5,
+            max_df=0.9,
+            strip_accents='unicode',
+            use_idf=True,
+            smooth_idf=True,
+            sublinear_tf=True
+        )
+        
+        # Use LinearSVC for faster training
+        self.classifier = CalibratedClassifierCV(
+            LinearSVC(
+                C=1.0,
+                class_weight='balanced',
+                dual=False,
+                max_iter=1000,
+                random_state=42
+            ),
+            n_jobs=self.n_jobs
+        )
 
-        tokenized_X = [word_tokenize(sentence.lower()) for sentence in X]
-
-        non_stopwords_X = [
-            [word for word in sentence if word not in self.stops or word in ["not", "no"]]
-            for sentence in tokenized_X
+    def preprocess_text(self, text):
+        # Clean text
+        text = self.cleanup_pattern.sub(' ', str(text).lower())
+        
+        # Tokenize
+        tokens = word_tokenize(text)
+        
+        # Remove stopwords and lemmatize
+        tokens = [
+            self.lmtzr.lemmatize(token)
+            for token in tokens
+            if token not in self.stops and len(token) > 2
         ]
+        
+        return ' '.join(tokens)
 
-        lemmatized_X = [[self.lmtzr.lemmatize(word) for word in sentence] for sentence in non_stopwords_X]
-        
-        processed_sentences = [' '.join(sentence) for sentence in lemmatized_X]
-        
-        return np.array(lemmatized_X, dtype=object), processed_sentences #("["weekend", "off","with,"unfortunately","nothing","to","do"], ["dfafda", "fdafda",""]")
+    def prepare_data(self, X):
+        # Use parallel processing for preprocessing
+        with parallel_backend('threading', n_jobs=self.n_jobs):
+            processed_texts = [self.preprocess_text(text) for text in X]
+        return processed_texts
 
+    def extract_features(self, processed_texts):
+        return self.tfidf_vectorizer.transform(processed_texts)
 
-    # Feature Extraction
-    def feature_extraction(self, processed_sentences):
+    def train_and_evaluate(self, X, y, test_size=0.2):
+        # Prepare data
+        print("Preprocessing texts...")
+        processed_texts = self.prepare_data(X)
         
-        tfidf_matrix = self.tfidf_vectorizer.fit_transform(processed_sentences)
-
-        # self.word2vec_model = Word2Vec(sentences=X, vector_size=300, window=5, min_count=1, workers=4)
-
-        # sentence_embeddings = []
-        # for sentence in X:
-        #     word_vectors = [self.word2vec_model.wv[word] for word in sentence if word in self.word2vec_model.wv]
-        #     if word_vectors:
-        #         sentence_vector = np.mean(word_vectors, axis=0)
-        #     else:
-        #         sentence_vector = np.zeros(self.word2vec_model.vector_size)
-        #     sentence_embeddings.append(sentence_vector)
-
-        # word2vec_embeddings = np.array(sentence_embeddings)
-
-        return tfidf_matrix # word2vec_embeddings
-
-    # Tranining and evaluation 
-    def train_and_evaluate_model(self, X, y):
+        # Extract features
+        print("Extracting features...")
+        self.tfidf_vectorizer.fit(processed_texts)
+        X_transformed = self.extract_features(processed_texts)
         
-        processed_sentences = self.data_preprocessing(X)
+        # Split data
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_transformed, y, 
+            test_size=test_size, 
+            random_state=42,
+            stratify=y
+        )
         
-        tfidf_matrix = self.feature_extraction(processed_sentences)
+        # Train model
+        print("Training model...")
+        with parallel_backend('threading', n_jobs=self.n_jobs):
+            self.classifier.fit(X_train, y_train)
         
-        X_train, X_test, y_train, y_test = train_test_split(tfidf_matrix, y, test_size=0.20, random_state=42)
-        
-        svm_model = SVC(kernel='rbf', C=1, gamma='scale', random_state=42)
-        svm_model.fit(X_train, y_train)
-        
-        y_pred = svm_model.predict(X_test)
-        
-        accuracy = accuracy_score(y_test, y_pred)
-        
+        # Evaluate
+        print("Evaluating model...")
+        y_pred = self.classifier.predict(X_test)
+        accuracy = accuracy_score(y_test, y_pred) 
         report = classification_report(y_test, y_pred)
         
         print(f"Accuracy: {accuracy:.4f}")
         print("\nClassification Report:\n", report)
+        
+        return accuracy, report
+    
+    def predict(self, texts):
+        processed_texts = self.prepare_data(texts)
+        features = self.extract_features(processed_texts)
+        return self.classifier.predict(features)
 
 if __name__ == "__main__":
+    # Set number of processes for parallel processing
+    n_jobs = multiprocessing.cpu_count() - 1
+    print(f"using {n_jobs} CPUs")
+    print("Loading dataset...")
+    dataset = pd.read_csv(
+        "./training.1600000.processed.noemoticon.csv",
+        encoding="ISO-8859-1"
+    )
+    X = dataset["Text"].values
+    y = dataset["Target"].values
     
-    dataset = pd.read_csv("./training.200000.processed.noemoticon.csv", encoding="ISO-8859-1")
-    raw_X = dataset["Text"].values  
-    y = dataset["Target"].values  
+    # Initialize and train model
+    sentiment_analyzer = SentimentAnalyzer(
+        max_features=1500000,
+        n_jobs=n_jobs
+    )
     
-    sentiment_analyzer = Sentimental_analysis()
-
-    sentiment_analyzer.train_and_evaluate_model(raw_X, y)
+    sentiment_analyzer.train_and_evaluate(X, y)
